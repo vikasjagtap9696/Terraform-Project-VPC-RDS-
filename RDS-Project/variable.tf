@@ -52,7 +52,7 @@ variable "allocated_storage" {
 variable "db_backup_retention_period" {
   description = "The number of days to retain backups"
   type        = number
-  default     = 7
+  default     = 0
 }
 
 variable "db_backup_window" {
