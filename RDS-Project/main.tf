@@ -1,150 +1,72 @@
-# Creating VPC
-resource "aws_vpc" "myvpc" {
-  cidr_block = var.vpccidr_block
+
+# Default VPC
+data "aws_vpc" "default" {
+  default = true
 }
 
-#Creating Internet Gateway
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.myvpc.id
-}
-
-
-#Creating Subnets
-resource "aws_subnet" "sub1" {
-  vpc_id                  = aws_vpc.myvpc.id
-  cidr_block              = var.sub1cidr_block
-  availability_zone       = var.sub1availability_zone
-  map_public_ip_on_launch = var.map_public_ip_on_launchs
-}
-resource "aws_subnet" "sub2" {
-  vpc_id                  = aws_vpc.myvpc.id
-  cidr_block              = var.sub2cidr_block
-  availability_zone       = var.sub2availability_zone
-  map_public_ip_on_launch = var.map_public_ip_on_launchs
-}
-
-#Creating Route Tables
-resource "aws_route_table" "RT" {
-  vpc_id = aws_vpc.myvpc.id
-
-  route {
-    cidr_block = var.routcidr_block
-    gateway_id = aws_internet_gateway.igw.id
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
   }
 }
 
-#Creating Subnet Association
-resource "aws_route_table_association" "rta1" {
-  subnet_id      = aws_subnet.sub1.id
-  route_table_id = aws_route_table.RT.id
-}
-resource "aws_route_table_association" "rta2" {
-  subnet_id      = aws_subnet.sub2.id
-  route_table_id = aws_route_table.RT.id
-}
-
-#Creating Security Groups
-resource "aws_security_group" "webSg" {
-  name   = "web"
-  vpc_id = aws_vpc.myvpc.id
+# Security group for RDS
+resource "aws_security_group" "rds_sg" {
+  name        = var.rds_security_group_name
+  description = var.rds_security_group_description
+  vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    description = "HTTP from VPC"
-    from_port   = var.from_port
-    to_port     = var.to_port
-    protocol    = var.protocol
-    cidr_blocks = var.cidr_blocks
-  }
-  ingress {
-    description = "SSH"
-    from_port   = var.from_ports
-    to_port     = var.to_ports
-    protocol    = var.protocol
-    cidr_blocks = var.cidr_blocks
+    from_port   = var.rds_ingress_from_port
+    to_port     = var.rds_ingress_to_port
+    protocol    = var.rds_ingress_protocol
+    cidr_blocks = var.rds_ingress_cidr_blocks
   }
 
   egress {
-    from_port   = var.ofrom_port
-    to_port     = var.oto_port
-    protocol    = "-1"
-    cidr_blocks = var.cidr_blocks
+    from_port   = var.rds_egress_from_port
+    to_port     = var.rds_egress_to_port
+    protocol    = var.rds_egress_protocol
+    cidr_blocks = var.rds_egress_cidr_blocks
   }
 
   tags = {
-    Name = "Web-sg"
+    Name = var.rds_security_group_name
   }
 }
 
-# Creating S3 Bucket
-resource "aws_s3_bucket" "example" {
-  bucket = var.bucket
-}
-
-
-# Creating Ec2-instance with the VPC
-resource "aws_instance" "webserver1" {
-  ami                    = var.ami
-  instance_type          = var.instance_type
-  vpc_security_group_ids = [aws_security_group.webSg.id]
-  subnet_id              = aws_subnet.sub1.id
-  user_data              = file("userdata.sh")
-}
-
-resource "aws_instance" "webserver2" {
-  ami                    = var.ami
-  instance_type          = var.instance_type
-  vpc_security_group_ids = [aws_security_group.webSg.id]
-  subnet_id              = aws_subnet.sub2.id
-  user_data              = file("userdata.sh")
-}
-
-#create alb
-resource "aws_lb" "myalb" {
-  name               = var.name
-  internal           = false
-  load_balancer_type = var.load_balancer_type
-
-  security_groups = [aws_security_group.webSg.id]
-  subnets         = [aws_subnet.sub1.id, aws_subnet.sub2.id]
+# Subnet group for RDS
+resource "aws_db_subnet_group" "rds_subnet_group" {
+  name       = var.rds_subnet_group_name
+  subnet_ids = data.aws_subnets.default.ids
 
   tags = {
-    Name = "web"
+    Name = var.rds_subnet_group_name
   }
 }
 
-# Creating Load Balancer
-resource "aws_lb_target_group" "tg" {
-  name     = var.tgname
-  port     = var.port
-  protocol = var.tgprotocol
-  vpc_id   = aws_vpc.myvpc.id
+# RDS instance
+resource "aws_db_instance" "default" {
+  allocated_storage      = var.allocated_storage
+  engine                 = var.db_engine
+  engine_version         = var.db_engine_version
+  instance_class         = var.db_instance_class
+  db_name                = var.db_name
+  username               = var.db_username
+  password               = var.db_password
+  parameter_group_name   = "${var.db_parameter_group_prefix}.${var.db_engine}${var.db_engine_pggroup}"  # Adjust if needed
+  db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
 
-  health_check {
-    path = "/index.html"
-    port = "traffic-port"
-  }
-}
+  # Backup and maintenance settings
+  backup_retention_period = var.db_backup_retention_period
+  backup_window           = var.db_backup_window
+  maintenance_window      = var.db_maintenance_window
 
-# Attaching Load Balancer
-resource "aws_lb_target_group_attachment" "attach1" {
-  target_group_arn = aws_lb_target_group.tg.arn
-  target_id        = aws_instance.webserver1.id
-  port             = 80
-}
+  skip_final_snapshot = var.skip_final_snapshot  # Skip final snapshot on deletion (for testing purposes)
 
-resource "aws_lb_target_group_attachment" "attach2" {
-  target_group_arn = aws_lb_target_group.tg.arn
-  target_id        = aws_instance.webserver2.id
-  port             = 80
-}
-
-resource "aws_lb_listener" "listener" {
-  load_balancer_arn = aws_lb.myalb.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    target_group_arn = aws_lb_target_group.tg.arn
-    type             = "forward"
+  tags = {
+    Name = var.rds_instance_name
   }
 }
