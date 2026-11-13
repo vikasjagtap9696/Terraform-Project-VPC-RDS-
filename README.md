@@ -131,11 +131,11 @@ terraform destroy
 
 ## 👨‍🎓 Author
 
-**Abhishek Saste**
+**Vikas Jagtap**
 
-💼 LinkedIn: [Connect with me](https://www.linkedin.com/in/abhisheksaste)
+💼 LinkedIn: [Connect with me](https://www.linkedin.com/in/vikasjagtap9696)
 
-🐙 GitHub: [Explore my repositories](https://github.com/abhisheksaste31-source)
+🐙 GitHub: [Explore my repositories](https://github.com/vikasjagtap9696)
 
 ---
 
